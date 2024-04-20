@@ -1,50 +1,130 @@
-import requests
-import json
+import java.awt.EventQueue;
+import java.util.*;
+import javax.swing.*;
+import org.hl7.fhir.r4.model.*;
+import org.hl7.fhir.r4.model.Patient.ContactComponent;
+import org.hl7.fhir.r4.model.Patient.HumanName;
+import org.hl7.fhir.r4.model.Patient.PatientCommunicationComponent;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
+import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.rest.client.api.ServerValidationModeEnum;
+import ca.uhn.fhir.rest.gclient.StringClientParam;
 
-base_url = "http://your-fhir-server-url.com" 
+public class MainForm {
 
-def get_all_patients():
-    response = requests.get(f"{base_url}/Patient")
-    return response.json()
+    private JFrame frame;
+    private JTextField txt_Search_By_Name;
+    private JTextField txt_fname;
+    private JTextField txt_LastName;
+    private JTextField txt_Email;
+    private JTable dataGridView1;
+    private IGenericClient client;
+    private Map<String, Patient> patientsDictionary = new HashMap<>();
 
-def add_patient(patient_data):
-    headers = {'Content-Type': 'application/json'}
-    response = requests.post(f"{base_url}/Patient", headers=headers, data=json.dumps(patient_data))
-    return response.json()
-
-def search_patient_by_name(name):
-    response = requests.get(f"{base_url}/Patient?name={name}")
-    return response.json()
-
-def create_new_patient(patient_data):
-    headers = {'Content-Type': 'application/json'}
-    response = requests.post(f"{base_url}/Patient", headers=headers, data=json.dumps(patient_data))
-    return response.json()
-
-def delete_patient(patient_id):
-    response = requests.delete(f"{base_url}/Patient/{patient_id}")
-    return response.status_code
-
-# Example usage:
-if __name__ == "__main__":
-    # Get all patients
-    all_patients = get_all_patients()
-    print("All Patients:", all_patients)
-
-    # Add a new patient
-    new_patient_data = {
-        "resourceType": "Patient",
-        "name": [{"given": ["John"], "family": "Doe"}]
+    public static void main(String[] args) {
+        EventQueue.invokeLater(() -> {
+            try {
+                MainForm window = new MainForm();
+                window.frame.setVisible(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
-    added_patient = add_patient(new_patient_data)
-    print("Added Patient:", added_patient)
 
-    # Search for a patient by name
-    search_name = "Doe"
-    search_result = search_patient_by_name(search_name)
-    print(f"Search Result for '{search_name}':", search_result)
+    public MainForm() {
+        initialize();
+        FhirContext ctx = FhirContext.forR4();
+        ctx.getRestfulClientFactory().setServerValidationMode(ServerValidationModeEnum.NEVER);
+        client = ctx.newRestfulGenericClient("https://fhir.simplifier.net/PharmacyManagementSystem2");
+    }
 
-    # Delete a patient (assuming you have the patient's id)
-    patient_id_to_delete = "12345"  # Replace with the actual patient ID
-    deletion_status = delete_patient(patient_id_to_delete)
-    print("Deletion Status Code:", deletion_status)
+    private void initialize() {
+        frame = new JFrame();
+        frame.setBounds(100, 100, 700, 500);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.getContentPane().setLayout(null);
+
+        // Other GUI components initialization...
+
+        JButton btnFindAllPatients = new JButton("Find All Patients");
+        btnFindAllPatients.addActionListener(e -> {
+            displayPatients(findPatientsByName(""));
+        });
+        btnFindAllPatients.setBounds(20, 20, 150, 30);
+        frame.getContentPane().add(btnFindAllPatients);
+
+        JButton btnFindPatient = new JButton("Find Patient");
+        btnFindPatient.addActionListener(e -> {
+            displayPatients(findPatientsByName(txt_Search_By_Name.getText()));
+        });
+        btnFindPatient.setBounds(180, 20, 150, 30);
+        frame.getContentPane().add(btnFindPatient);
+
+        JButton btnAddPatient = new JButton("Add Patient");
+        btnAddPatient.addActionListener(e -> {
+            addPatient();
+        });
+        btnAddPatient.setBounds(340, 20, 150, 30);
+        frame.getContentPane().add(btnAddPatient);
+
+        // Other GUI components initialization...
+    }
+
+    private void displayPatients(PatientModelList patients) {
+        List<Object[]> data = new ArrayList<>();
+        for (PatientDataModel patient : patients.getResultList()) {
+            data.add(new Object[] { patient.getId(), patient.getFullName(), patient.getEmail(), patient.getBirthdate() });
+        }
+        Object[][] rowData = data.toArray(new Object[0][0]);
+        String[] columnNames = { "id", "Full Name", "Email", "BirthDate" };
+        DefaultTableModel model = new DefaultTableModel(rowData, columnNames);
+        dataGridView1.setModel(model);
+    }
+
+    private PatientModelList findPatientsByName(String fullName) {
+        Bundle result = client.search().forResource(Patient.class)
+                .where(new StringClientParam("name").matches().value(fullName)).returnBundle(Bundle.class).execute();
+        PatientModelList patients = new PatientModelList();
+        patients.setResultList(new ArrayList<>());
+        for (Bundle.BundleEntryComponent entry : result.getEntry()) {
+            if (entry.getResource() instanceof Patient) {
+                Patient patient = (Patient) entry.getResource();
+                PatientDataModel patientData = new PatientDataModel(patient);
+                patients.getResultList().add(patientData);
+            }
+        }
+        return patients;
+    }
+
+    private void addPatient() {
+        String firstName = txt_fname.getText();
+        String lastName = txt_LastName.getText();
+        String email = txt_Email.getText();
+        String fullName = firstName + " " + lastName;
+
+        if (patientsDictionary.containsKey(fullName)) {
+            JOptionPane.showMessageDialog(frame, "Patient already added.");
+            return;
+        }
+
+        PatientDataModel patientDataModel = new PatientDataModel();
+        patientDataModel.setFirstName(firstName);
+        patientDataModel.setLastName(lastName);
+        patientDataModel.setEmail(email);
+
+        Patient patient = patientDataModel.toPatient();
+        ICreateTyped createdPatient = client.create().resource(patient).execute();
+        if (createdPatient.getId() != null) {
+            JOptionPane.showMessageDialog(frame, "Patient added.");
+            patientsDictionary.put(createdPatient.getId().getValue(), patient);
+            clearTextBoxes();
+        }
+    }
+
+    private void clearTextBoxes() {
+        txt_fname.setText("");
+        txt_LastName.setText("");
+        txt_Email.setText("");
+    }
+}
