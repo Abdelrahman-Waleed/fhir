@@ -1,0 +1,54 @@
+from flask import Flask, render_template, request, jsonify
+
+app = Flask(__name__)
+
+# Dummy patient data (replace with actual FHIR operations)
+patients = [
+    {"id": 1, "name": "John Doe", "age": 30},
+    {"id": 2, "name": "Jane Smith", "age": 25},
+]
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/patients', methods=['GET'])
+def get_all_patients():
+    return jsonify(patients)
+
+@app.route('/patients/<int:patient_id>', methods=['GET'])
+def get_patient(patient_id):
+    patient = next((p for p in patients if p["id"] == patient_id), None)
+    if patient:
+        return jsonify(patient)
+    return jsonify({"message": "Patient not found"}), 404
+
+@app.route('/patients', methods=['POST'])
+def add_patient():
+    data = request.get_json()
+    new_patient = {
+        "id": len(patients) + 1,
+        "name": data.get("name"),
+        "age": data.get("age")
+    }
+    patients.append(new_patient)
+    return jsonify(new_patient), 201
+
+@app.route('/patients/<int:patient_id>', methods=['DELETE'])
+def delete_patient(patient_id):
+    global patients
+    patients = [p for p in patients if p["id"] != patient_id]
+    return jsonify({"message": "Patient deleted"}), 200
+
+@app.route('/patients/<int:patient_id>', methods=['PUT'])
+def update_patient(patient_id):
+    data = request.get_json()
+    for patient in patients:
+        if patient["id"] == patient_id:
+            patient["name"] = data.get("name", patient["name"])
+            patient["age"] = data.get("age", patient["age"])
+            return jsonify(patient)
+    return jsonify({"message": "Patient not found"}), 404
+
+if __name__ == '__main__':
+    app.run(debug=True)
